@@ -62,6 +62,22 @@ pub mod ffi {
         GeomAbs_Intersection,
     }
 
+    #[derive(Debug)]
+    #[repr(u32)]
+    pub enum GeomAbs_SurfaceType {
+        GeomAbs_Plane,
+        GeomAbs_Cylinder,
+        GeomAbs_Cone,
+        GeomAbs_Sphere,
+        GeomAbs_Torus,
+        GeomAbs_BezierSurface,
+        GeomAbs_BSplineSurface,
+        GeomAbs_SurfaceOfRevolution,
+        GeomAbs_SurfaceOfExtrusion,
+        GeomAbs_OffsetSurface,
+        GeomAbs_OtherSurface,
+    }
+
     unsafe extern "C++" {
         // https://github.com/dtolnay/cxx/issues/280
 
@@ -581,6 +597,56 @@ pub mod ffi {
         pub fn LastParameter(self: &BRepAdaptor_Curve) -> f64;
         pub fn BRepAdaptor_Curve_value(curve: &BRepAdaptor_Curve, u: f64) -> UniquePtr<gp_Pnt>;
         pub fn GetType(self: &BRepAdaptor_Curve) -> GeomAbs_CurveType;
+
+        // BRepAdaptor_Surface
+        type BRepAdaptor_Surface;
+        type GeomAbs_SurfaceType;
+
+        pub fn BRepAdaptor_Surface_ctor(
+            face: &TopoDS_Face,
+        ) -> UniquePtr<BRepAdaptor_Surface>;
+        pub fn FirstUParameter(self: &BRepAdaptor_Surface) -> f64;
+        pub fn LastUParameter(self: &BRepAdaptor_Surface) -> f64;
+        pub fn FirstVParameter(self: &BRepAdaptor_Surface) -> f64;
+        pub fn LastVParameter(self: &BRepAdaptor_Surface) -> f64;
+        pub fn GetType(self: &BRepAdaptor_Surface) -> GeomAbs_SurfaceType;
+        pub fn BRepAdaptor_Surface_Value(
+            surface: &BRepAdaptor_Surface,
+            u: f64,
+            v: f64,
+        ) -> UniquePtr<gp_Pnt>;
+
+        // BRepLProp_SLProps — surface local properties (curvature, normals)
+        type BRepLProp_SLProps;
+
+        pub fn BRepLProp_SLProps_ctor(
+            surface: &BRepAdaptor_Surface,
+            u: f64,
+            v: f64,
+            n: i32,
+            resolution: f64,
+        ) -> UniquePtr<BRepLProp_SLProps>;
+        pub fn BRepLProp_SLProps_ctor_no_uv(
+            surface: &BRepAdaptor_Surface,
+            n: i32,
+            resolution: f64,
+        ) -> UniquePtr<BRepLProp_SLProps>;
+        pub fn SetParameters(self: Pin<&mut BRepLProp_SLProps>, u: f64, v: f64);
+        pub fn IsNormalDefined(self: Pin<&mut BRepLProp_SLProps>) -> bool;
+        pub fn BRepLProp_SLProps_Value(props: &BRepLProp_SLProps) -> UniquePtr<gp_Pnt>;
+        pub fn BRepLProp_SLProps_Normal(props: Pin<&mut BRepLProp_SLProps>) -> UniquePtr<gp_Dir>;
+        pub fn IsCurvatureDefined(self: Pin<&mut BRepLProp_SLProps>) -> bool;
+        pub fn IsUmbilic(self: Pin<&mut BRepLProp_SLProps>) -> bool;
+        pub fn MaxCurvature(self: Pin<&mut BRepLProp_SLProps>) -> f64;
+        pub fn MinCurvature(self: Pin<&mut BRepLProp_SLProps>) -> f64;
+        pub fn MeanCurvature(self: Pin<&mut BRepLProp_SLProps>) -> f64;
+        pub fn GaussianCurvature(self: Pin<&mut BRepLProp_SLProps>) -> f64;
+        pub fn BRepLProp_SLProps_CurvatureDirection_Max(
+            props: Pin<&mut BRepLProp_SLProps>,
+        ) -> UniquePtr<gp_Dir>;
+        pub fn BRepLProp_SLProps_CurvatureDirection_Min(
+            props: Pin<&mut BRepLProp_SLProps>,
+        ) -> UniquePtr<gp_Dir>;
 
         // Primitives
         type BRepPrimAPI_MakePrism;

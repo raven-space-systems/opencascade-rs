@@ -1,6 +1,9 @@
 #include "rust/cxx.h"
 #include <BOPAlgo_GlueEnum.hxx>
 #include <BRepAdaptor_Curve.hxx>
+#include <BRepAdaptor_Surface.hxx>
+#include <BRepLProp_SLProps.hxx>
+#include <GeomAbs_SurfaceType.hxx>
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
@@ -567,4 +570,48 @@ inline std::unique_ptr<gp_Pnt> Bnd_Box_CornerMax(const Bnd_Box &box) {
 // BRepBndLib
 inline void BRepBndLib_Add(const TopoDS_Shape &shape, Bnd_Box &box, const Standard_Boolean useTriangulation) {
   BRepBndLib::Add(shape, box, useTriangulation);
+}
+
+// BRepAdaptor_Surface
+inline std::unique_ptr<BRepAdaptor_Surface> BRepAdaptor_Surface_ctor(const TopoDS_Face &face) {
+  return std::unique_ptr<BRepAdaptor_Surface>(new BRepAdaptor_Surface(face, Standard_True));
+}
+
+inline std::unique_ptr<gp_Pnt> BRepAdaptor_Surface_Value(const BRepAdaptor_Surface &surface, const Standard_Real U,
+                                                          const Standard_Real V) {
+  return std::unique_ptr<gp_Pnt>(new gp_Pnt(surface.Value(U, V)));
+}
+
+// BRepLProp_SLProps
+inline std::unique_ptr<BRepLProp_SLProps> BRepLProp_SLProps_ctor(const BRepAdaptor_Surface &surface,
+                                                                  const Standard_Real U, const Standard_Real V,
+                                                                  const Standard_Integer N,
+                                                                  const Standard_Real Resolution) {
+  return std::unique_ptr<BRepLProp_SLProps>(new BRepLProp_SLProps(surface, U, V, N, Resolution));
+}
+
+inline std::unique_ptr<BRepLProp_SLProps> BRepLProp_SLProps_ctor_no_uv(const BRepAdaptor_Surface &surface,
+                                                                        const Standard_Integer N,
+                                                                        const Standard_Real Resolution) {
+  return std::unique_ptr<BRepLProp_SLProps>(new BRepLProp_SLProps(surface, N, Resolution));
+}
+
+inline std::unique_ptr<gp_Pnt> BRepLProp_SLProps_Value(const BRepLProp_SLProps &props) {
+  return std::unique_ptr<gp_Pnt>(new gp_Pnt(props.Value()));
+}
+
+inline std::unique_ptr<gp_Dir> BRepLProp_SLProps_Normal(BRepLProp_SLProps &props) {
+  return std::unique_ptr<gp_Dir>(new gp_Dir(props.Normal()));
+}
+
+inline std::unique_ptr<gp_Dir> BRepLProp_SLProps_CurvatureDirection_Max(BRepLProp_SLProps &props) {
+  gp_Dir max_d, min_d;
+  props.CurvatureDirections(max_d, min_d);
+  return std::unique_ptr<gp_Dir>(new gp_Dir(max_d));
+}
+
+inline std::unique_ptr<gp_Dir> BRepLProp_SLProps_CurvatureDirection_Min(BRepLProp_SLProps &props) {
+  gp_Dir max_d, min_d;
+  props.CurvatureDirections(max_d, min_d);
+  return std::unique_ptr<gp_Dir>(new gp_Dir(min_d));
 }
