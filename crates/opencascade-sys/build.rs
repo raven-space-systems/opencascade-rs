@@ -92,8 +92,17 @@ impl OcctConfig {
             std::env::set_var("DEP_OCCT_ROOT", occt_sys::occt_path().as_os_str());
         }
 
-        let dst =
-            std::panic::catch_unwind(|| cmake::Config::new("OCCT").register_dep("occt").build());
+        let dst = std::panic::catch_unwind(|| {
+            let mut cfg = cmake::Config::new("OCCT");
+            cfg.register_dep("occt");
+
+            // When using builtin, explicitly point find_package(OpenCASCADE) to the
+            // builtin installation so it isn't shadowed by a system-wide OCCT.
+            #[cfg(feature = "builtin")]
+            cfg.define("OpenCASCADE_DIR", occt_sys::occt_path().join("cmake"));
+
+            cfg.build()
+        });
 
         #[cfg(feature = "builtin")]
         let dst = dst.expect("Builtin OpenCASCADE library not found.");
