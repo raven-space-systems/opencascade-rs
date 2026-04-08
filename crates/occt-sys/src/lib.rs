@@ -19,6 +19,7 @@ pub fn occt_path() -> PathBuf {
 /// Build the OCCT library.
 pub fn build_occt() {
     cmake::Config::new(Path::new(env!("OCCT_SRC_DIR")))
+        .define("CMAKE_POLICY_VERSION_MINIMUM", "3.5")
         .define("BUILD_PATCH", Path::new(env!("OCCT_PATCH_DIR")))
         .define("BUILD_LIBRARY_TYPE", "Static")
         .define("BUILD_MODULE_ApplicationFramework", "FALSE")
