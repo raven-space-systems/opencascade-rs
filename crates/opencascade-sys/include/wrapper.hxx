@@ -29,6 +29,8 @@
 #include <BRepLib_ToolTriangulatedShape.hxx>
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <BRepOffsetAPI_MakeOffset.hxx>
+#include <BRepOffsetAPI_MakeOffsetShape.hxx>
+#include <BRepOffset_Mode.hxx>
 #include <BRepOffsetAPI_MakePipe.hxx>
 #include <BRepOffsetAPI_MakePipeShell.hxx>
 #include <BRepOffsetAPI_MakeThickSolid.hxx>
@@ -87,6 +89,7 @@
 #include <gp_Ax3.hxx>
 #include <gp_Circ.hxx>
 #include <gp_Lin.hxx>
+#include <gp_Pln.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Trsf.hxx>
 #include <gp_Vec.hxx>
@@ -614,4 +617,34 @@ inline std::unique_ptr<gp_Dir> BRepLProp_SLProps_CurvatureDirection_Min(BRepLPro
   gp_Dir max_d, min_d;
   props.CurvatureDirections(max_d, min_d);
   return std::unique_ptr<gp_Dir>(new gp_Dir(min_d));
+}
+
+// gp_Pln constructors
+inline std::unique_ptr<gp_Pln> gp_Pln_ctor(const gp_Pnt &point, const gp_Dir &normal) {
+  return std::unique_ptr<gp_Pln>(new gp_Pln(point, normal));
+}
+
+// BRepOffsetAPI_MakeOffsetShape — offset a face/shell by a normal distance.
+// Wraps PerformByJoin with sensible defaults (BRepOffset_Skin, Arc join).
+inline std::unique_ptr<BRepOffsetAPI_MakeOffsetShape> BRepOffsetAPI_MakeOffsetShape_face(
+    const TopoDS_Shape &shape,
+    double offset,
+    double tolerance
+) {
+  auto maker = std::unique_ptr<BRepOffsetAPI_MakeOffsetShape>(new BRepOffsetAPI_MakeOffsetShape());
+  maker->PerformByJoin(shape, offset, tolerance,
+      BRepOffset_Skin,      // mode
+      Standard_False,       // intersection
+      Standard_False,       // self-intersection
+      GeomAbs_Arc,          // join type
+      Standard_False);      // remove internal edges
+  return maker;
+}
+
+// BRepAlgoAPI_Section with a gp_Pln — intersect a shape with a geometric plane.
+inline std::unique_ptr<BRepAlgoAPI_Section> BRepAlgoAPI_Section_plane_ctor(
+    const TopoDS_Shape &shape,
+    const gp_Pln &plane
+) {
+  return std::unique_ptr<BRepAlgoAPI_Section>(new BRepAlgoAPI_Section(shape, plane, Standard_True));
 }

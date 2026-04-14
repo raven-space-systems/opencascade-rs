@@ -865,6 +865,20 @@ pub mod ffi {
 
         type GeomAbs_JoinType;
 
+        // Offset shape (normal offset of face/shell)
+        type BRepOffsetAPI_MakeOffsetShape;
+
+        /// Offset a shape by a normal distance. Calls PerformByJoin with
+        /// BRepOffset_Skin mode and GeomAbs_Arc join.
+        pub fn BRepOffsetAPI_MakeOffsetShape_face(
+            shape: &TopoDS_Shape,
+            offset: f64,
+            tolerance: f64,
+        ) -> UniquePtr<BRepOffsetAPI_MakeOffsetShape>;
+
+        pub fn Shape(self: Pin<&mut BRepOffsetAPI_MakeOffsetShape>) -> &TopoDS_Shape;
+        pub fn IsDone(self: &BRepOffsetAPI_MakeOffsetShape) -> bool;
+
         // Solids
         type BRepOffsetAPI_MakeThickSolid;
 
@@ -995,6 +1009,12 @@ pub mod ffi {
             shape_2: &TopoDS_Shape,
         ) -> UniquePtr<BRepAlgoAPI_Section>;
 
+        /// Intersect a shape with a geometric plane.
+        pub fn BRepAlgoAPI_Section_plane_ctor(
+            shape: &TopoDS_Shape,
+            plane: &gp_Pln,
+        ) -> UniquePtr<BRepAlgoAPI_Section>;
+
         pub fn Shape(self: Pin<&mut BRepAlgoAPI_Section>) -> &TopoDS_Shape;
         pub fn Build(self: Pin<&mut BRepAlgoAPI_Section>, progress: &Message_ProgressRange);
         pub fn IsDone(self: &BRepAlgoAPI_Section) -> bool;
@@ -1037,6 +1057,11 @@ pub mod ffi {
 
         #[cxx_name = "construct_unique"]
         pub fn gp_Ax2d_ctor(point: &gp_Pnt2d, dir: &gp_Dir2d) -> UniquePtr<gp_Ax2d>;
+
+        // Plane
+        type gp_Pln;
+
+        pub fn gp_Pln_ctor(point: &gp_Pnt, normal: &gp_Dir) -> UniquePtr<gp_Pln>;
 
         // Geometry Interpolation
         type GeomAPI_Interpolate;
