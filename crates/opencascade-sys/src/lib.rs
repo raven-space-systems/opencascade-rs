@@ -313,6 +313,11 @@ pub mod ffi {
             cylinder_handle: &HandleGeom_CylindricalSurface,
         ) -> UniquePtr<HandleGeomSurface>;
 
+        pub fn Geom_OffsetSurface_ctor(
+            base: &HandleGeomSurface,
+            offset: f64,
+        ) -> UniquePtr<HandleGeomSurface>;
+
         pub fn Geom_BezierSurface_ctor(
             poles: &TColgp_Array2OfPnt,
         ) -> UniquePtr<HandleGeomBezierSurface>;
@@ -583,10 +588,30 @@ pub mod ffi {
             edge_tolerance: f64,
         ) -> UniquePtr<BRepBuilderAPI_MakeFace>;
 
+        pub fn BRepBuilderAPI_MakeFace_surface_bounded(
+            surface: &HandleGeomSurface,
+            u_min: f64,
+            u_max: f64,
+            v_min: f64,
+            v_max: f64,
+            tol_degen: f64,
+        ) -> UniquePtr<BRepBuilderAPI_MakeFace>;
+
         pub fn Face(self: &BRepBuilderAPI_MakeFace) -> &TopoDS_Face;
         pub fn Shape(self: Pin<&mut BRepBuilderAPI_MakeFace>) -> &TopoDS_Shape;
         pub fn Build(self: Pin<&mut BRepBuilderAPI_MakeFace>, progress: &Message_ProgressRange);
         pub fn IsDone(self: &BRepBuilderAPI_MakeFace) -> bool;
+
+        // Point-in-solid classifier
+        type BRepClass3d_SolidClassifier;
+        pub fn BRepClass3d_SolidClassifier_ctor(
+            shape: &TopoDS_Shape,
+        ) -> UniquePtr<BRepClass3d_SolidClassifier>;
+        pub fn BRepClass3d_SolidClassifier_classify(
+            classifier: Pin<&mut BRepClass3d_SolidClassifier>,
+            point: &gp_Pnt,
+            tolerance: f64,
+        ) -> i32;
 
         // BRepAdaptor
         type BRepAdaptor_Curve;
@@ -1225,6 +1250,19 @@ pub mod ffi {
             face: &TopoDS_Face,
             location: Pin<&mut TopLoc_Location>,
         ) -> UniquePtr<HandlePoly_Triangulation>;
+        pub fn BRep_Tool_IsClosed_face(face: &TopoDS_Face) -> bool;
+
+        // Geom_Surface queries (UV-metric / surface-health analysis).
+        pub fn Geom_Surface_D1(
+            surface: &HandleGeomSurface,
+            u: f64,
+            v: f64,
+            p: Pin<&mut gp_Pnt>,
+            d1u: Pin<&mut gp_Vec>,
+            d1v: Pin<&mut gp_Vec>,
+        );
+        pub fn Geom_Surface_IsUClosed(surface: &HandleGeomSurface) -> bool;
+        pub fn Geom_Surface_IsVClosed(surface: &HandleGeomSurface) -> bool;
 
         type BRepIntCurveSurface_Inter;
 
@@ -1447,6 +1485,10 @@ pub mod ffi {
 
         // BRepTools
         pub fn outer_wire(face: &TopoDS_Face) -> UniquePtr<TopoDS_Wire>;
+        pub fn discretize_face_outer_wire_uv(
+            face: &TopoDS_Face,
+            target_chord_mm: f64,
+        ) -> UniquePtr<CxxVector<f64>>;
         pub fn write_brep_text(shape: &TopoDS_Shape, path: String) -> bool;
         pub fn read_brep_text(path: String) -> UniquePtr<TopoDS_Shape>;
 

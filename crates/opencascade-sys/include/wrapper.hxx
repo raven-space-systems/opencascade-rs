@@ -17,6 +17,7 @@
 #include <BRepBuilderAPI_MakeVertex.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
+#include <BRepClass3d_SolidClassifier.hxx>
 #include <BRepFeat_MakeCylindricalHole.hxx>
 #include <BRepFeat_MakeDPrism.hxx>
 #include <BRepFilletAPI_MakeChamfer.hxx>
@@ -43,10 +44,13 @@
 #include <BRepPrimAPI_MakeSphere.hxx>
 #include <BRepPrimAPI_MakeTorus.hxx>
 #include <BRepTools.hxx>
+#include <BRepTools_WireExplorer.hxx>
 #include <BRep_Builder.hxx>
+#include <BRep_Tool.hxx>
 #include <BinTools.hxx>
 #include <GCE2d_MakeSegment.hxx>
 #include <GCPnts_TangentialDeflection.hxx>
+#include <GCPnts_UniformAbscissa.hxx>
 #include <GC_MakeArcOfCircle.hxx>
 #include <GC_MakeSegment.hxx>
 #include <GProp_GProps.hxx>
@@ -59,6 +63,7 @@
 #include <Geom_BezierCurve.hxx>
 #include <Geom_BezierSurface.hxx>
 #include <Geom_CylindricalSurface.hxx>
+#include <Geom_OffsetSurface.hxx>
 #include <Geom_Plane.hxx>
 #include <Geom_Surface.hxx>
 #include <Geom_TrimmedCurve.hxx>
@@ -176,6 +181,36 @@ Geom_BezierCurve_to_handle(std::unique_ptr<Geom_BezierCurve> bezier_curve) {
 
 inline std::unique_ptr<HandleGeomSurface> cylinder_to_surface(const HandleGeom_CylindricalSurface &cylinder_handle) {
   return std::unique_ptr<HandleGeomSurface>(new opencascade::handle<Geom_Surface>(cylinder_handle));
+}
+
+inline std::unique_ptr<HandleGeomSurface> Geom_OffsetSurface_ctor(const HandleGeomSurface &base, double offset) {
+  Handle(Geom_OffsetSurface) offset_surface = new Geom_OffsetSurface(base, offset);
+  return std::unique_ptr<HandleGeomSurface>(new opencascade::handle<Geom_Surface>(offset_surface));
+}
+
+inline std::unique_ptr<BRepBuilderAPI_MakeFace> BRepBuilderAPI_MakeFace_surface_bounded(
+    const HandleGeomSurface &surface,
+    double u_min, double u_max, double v_min, double v_max, double tol_degen) {
+  return std::unique_ptr<BRepBuilderAPI_MakeFace>(
+      new BRepBuilderAPI_MakeFace(surface, u_min, u_max, v_min, v_max, tol_degen));
+}
+
+inline std::unique_ptr<BRepClass3d_SolidClassifier> BRepClass3d_SolidClassifier_ctor(const TopoDS_Shape &shape) {
+  return std::unique_ptr<BRepClass3d_SolidClassifier>(new BRepClass3d_SolidClassifier(shape));
+}
+
+// Classify `point` against the solid. Returns 0=IN, 1=OUT, 2=ON, 3=UNKNOWN.
+// tolerance is the geometric tolerance used by OCCT for the boundary test.
+inline int BRepClass3d_SolidClassifier_classify(
+    BRepClass3d_SolidClassifier &classifier, const gp_Pnt &point, double tolerance) {
+  classifier.Perform(point, tolerance);
+  TopAbs_State s = classifier.State();
+  switch (s) {
+    case TopAbs_IN: return 0;
+    case TopAbs_OUT: return 1;
+    case TopAbs_ON: return 2;
+    default: return 3;
+  }
 }
 
 inline std::unique_ptr<HandleGeomBezierSurface> Geom_BezierSurface_ctor(const TColgp_Array2OfPnt &poles) {
@@ -311,6 +346,26 @@ inline const TopoDS_Builder &BRep_Builder_upcast_to_topods_builder(const BRep_Bu
 // Transforms
 inline std::unique_ptr<HandleGeomSurface> BRep_Tool_Surface(const TopoDS_Face &face) {
   return std::unique_ptr<HandleGeomSurface>(new opencascade::handle<Geom_Surface>(BRep_Tool::Surface(face)));
+}
+
+// Geom_Surface queries for UV-metric / surface-health analysis.
+// D1 fills P, D1U, D1V with the position and first partial derivatives at (u, v).
+inline void Geom_Surface_D1(const HandleGeomSurface &surface, double u, double v,
+                             gp_Pnt &p, gp_Vec &d1u, gp_Vec &d1v) {
+  surface->D1(u, v, p, d1u, d1v);
+}
+
+inline bool Geom_Surface_IsUClosed(const HandleGeomSurface &surface) {
+  return surface->IsUClosed() == Standard_True;
+}
+
+inline bool Geom_Surface_IsVClosed(const HandleGeomSurface &surface) {
+  return surface->IsVClosed() == Standard_True;
+}
+
+// True when the face has a geometric seam (periodic surface wrapped in the same face).
+inline bool BRep_Tool_IsClosed_face(const TopoDS_Face &face) {
+  return BRep_Tool::IsClosed(face) == Standard_True;
 }
 
 inline std::unique_ptr<HandleGeomCurve> BRep_Tool_Curve(const TopoDS_Edge &edge, Standard_Real &first,
@@ -472,6 +527,83 @@ BRepFilletAPI_MakeFillet2d_add_chamfer_angle(BRepFilletAPI_MakeFillet2d &make_fi
 // BRepTools
 inline std::unique_ptr<TopoDS_Wire> outer_wire(const TopoDS_Face &face) {
   return std::unique_ptr<TopoDS_Wire>(new TopoDS_Wire(BRepTools::OuterWire(face)));
+}
+
+// Walks the face's outer wire and returns the UV polyline that traces the
+// wire in face-parameter space. Each edge's 2D PCurve on the face is sampled
+// by 3D arc length (`target_chord_mm`-spaced in world coordinates), so the
+// output stays evenly spaced regardless of UV distortion. The result is a
+// flat `[u0, v0, u1, v1, ...]` vector matching the layout the Rust side
+// expects when chunking back into `[f64; 2]` points.
+//
+// Walking respects each edge's orientation as returned by
+// BRepTools_WireExplorer, which gives the wire in the direction where the
+// face's interior is on the left (OCCT's CCW convention for outer wires of
+// FORWARD faces). The last sample of each edge is dropped so consecutive
+// edges don't double up on the shared vertex; the closing point of a closed
+// wire is also implicit (first != last in the returned polyline).
+inline std::unique_ptr<std::vector<double>> discretize_face_outer_wire_uv(
+    const TopoDS_Face &face,
+    double target_chord_mm) {
+  auto result = std::make_unique<std::vector<double>>();
+  if (target_chord_mm < 1e-9) target_chord_mm = 1e-9;
+
+  TopoDS_Wire wire = BRepTools::OuterWire(face);
+  if (wire.IsNull()) {
+    return result;
+  }
+
+  BRepTools_WireExplorer wexp(wire, face);
+  for (; wexp.More(); wexp.Next()) {
+    TopoDS_Edge edge = wexp.Current();
+    TopAbs_Orientation ori = wexp.Orientation();
+
+    Standard_Real pfirst = 0.0, plast = 0.0;
+    Handle(Geom2d_Curve) pcurve =
+        BRep_Tool::CurveOnSurface(edge, face, pfirst, plast);
+    if (pcurve.IsNull()) {
+      continue;
+    }
+
+    // Arc-length sampling on the 3D edge curve — gives chord-uniform
+    // samples in world space. We then evaluate the PCurve at the same
+    // parameter to get UV; both representations share the edge's
+    // parametric range.
+    BRepAdaptor_Curve adaptor(edge);
+    GCPnts_UniformAbscissa sampler(
+        adaptor, target_chord_mm,
+        adaptor.FirstParameter(), adaptor.LastParameter());
+
+    if (!sampler.IsDone() || sampler.NbPoints() < 2) {
+      // Degenerate edge (zero arc length, or sampling failed). Fall back
+      // to the start vertex only — the next edge will provide its end.
+      gp_Pnt2d p = pcurve->Value(ori == TopAbs_REVERSED ? plast : pfirst);
+      result->push_back(p.X());
+      result->push_back(p.Y());
+      continue;
+    }
+
+    Standard_Integer n = sampler.NbPoints();
+    if (ori == TopAbs_REVERSED) {
+      // Walk parameters n .. 2 (skip the last/i=1 which equals next edge's start).
+      for (Standard_Integer i = n; i >= 2; --i) {
+        Standard_Real t = sampler.Parameter(i);
+        gp_Pnt2d p = pcurve->Value(t);
+        result->push_back(p.X());
+        result->push_back(p.Y());
+      }
+    } else {
+      // Walk parameters 1 .. n-1 (skip n which equals next edge's start).
+      for (Standard_Integer i = 1; i <= n - 1; ++i) {
+        Standard_Real t = sampler.Parameter(i);
+        gp_Pnt2d p = pcurve->Value(t);
+        result->push_back(p.X());
+        result->push_back(p.Y());
+      }
+    }
+  }
+
+  return result;
 }
 
 inline bool write_brep_text(const TopoDS_Shape &shape, rust::String path) {
