@@ -1,4 +1,5 @@
 #include "rust/cxx.h"
+#include <memory>
 #include <BOPAlgo_GlueEnum.hxx>
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepAdaptor_Surface.hxx>
