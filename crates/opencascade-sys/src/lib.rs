@@ -607,6 +607,20 @@ pub mod ffi {
         pub fn BRepClass3d_SolidClassifier_ctor(
             shape: &TopoDS_Shape,
         ) -> UniquePtr<BRepClass3d_SolidClassifier>;
+
+        // Ray-cast point-in-solid classifier — avoids the Extrema_ExtCC crash
+        // path in BRepClass3d_SolidClassifier. Loaded once per solid, reused
+        // per point. Returns 0=IN, 1=OUT, 3=UNKNOWN.
+        type IntCurvesFace_ShapeIntersector;
+        pub fn IntCurvesFace_ShapeIntersector_ctor(
+            shape: &TopoDS_Shape,
+            tol: f64,
+        ) -> UniquePtr<IntCurvesFace_ShapeIntersector>;
+        pub fn IntCurvesFace_point_in_solid(
+            isector: Pin<&mut IntCurvesFace_ShapeIntersector>,
+            point: &gp_Pnt,
+            tol: f64,
+        ) -> i32;
         pub fn BRepClass3d_SolidClassifier_classify(
             classifier: Pin<&mut BRepClass3d_SolidClassifier>,
             point: &gp_Pnt,

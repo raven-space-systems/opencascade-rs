@@ -77,6 +77,7 @@
 #include <Poly_Connect.hxx>
 #include <STEPControl_Reader.hxx>
 #include <STEPControl_Writer.hxx>
+#include <IntCurvesFace_ShapeIntersector.hxx>
 #include <ShapeAnalysis_FreeBounds.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <Standard_Type.hxx>
@@ -198,6 +199,46 @@ inline std::unique_ptr<BRepBuilderAPI_MakeFace> BRepBuilderAPI_MakeFace_surface_
 
 inline std::unique_ptr<BRepClass3d_SolidClassifier> BRepClass3d_SolidClassifier_ctor(const TopoDS_Shape &shape) {
   return std::unique_ptr<BRepClass3d_SolidClassifier>(new BRepClass3d_SolidClassifier(shape));
+}
+
+// Ray-cast point-in-solid classifier, an alternative to
+// BRepClass3d_SolidClassifier that AVOIDS the line-vs-edge curve extrema
+// (Extrema_ExtCC) code path — which null-derefs (native SIGSEGV) on some STEP
+// solids whose edges carry degenerate 3D curves that survive ShapeFix healing.
+// IntCurvesFace_ShapeIntersector does line-vs-FACE surface intersection, so it
+// never constructs a curve-curve extrema tool.
+//
+// Loaded once per solid and reused for every point.
+inline std::unique_ptr<IntCurvesFace_ShapeIntersector> IntCurvesFace_ShapeIntersector_ctor(
+    const TopoDS_Shape &shape, double tol) {
+  auto isector = std::unique_ptr<IntCurvesFace_ShapeIntersector>(new IntCurvesFace_ShapeIntersector());
+  isector->Load(shape, tol);
+  return isector;
+}
+
+// Cast a semi-infinite ray from `point` and count face crossings strictly ahead
+// of the origin; odd => inside. Returns the same code convention as
+// BRepClass3d_SolidClassifier_classify: 0=IN, 1=OUT, 3=UNKNOWN. A deliberately
+// skewed (non-axis-aligned) direction minimizes grazing hits on edges/seams.
+// Points on the boundary are not distinguished as ON — they fall to whichever
+// parity the ray yields, which is acceptable for the conservative
+// "drop a triangle only if all three vertices are OUT" test in clip_to_solid.
+inline int IntCurvesFace_point_in_solid(
+    IntCurvesFace_ShapeIntersector &isector, const gp_Pnt &point, double tol) {
+  gp_Dir dir(0.5715476066, 0.6172714152, 0.5401984268); // arbitrary unit vector
+  gp_Lin ray(point, dir);
+  isector.Perform(ray, 0.0, 1.0e18);
+  if (!isector.IsDone()) {
+    return 3; // UNKNOWN — clip_to_solid treats this as inside (keeps triangle)
+  }
+  int crossings = 0;
+  const int n = isector.NbPnt();
+  for (int i = 1; i <= n; ++i) {
+    if (isector.WParameter(i) > tol) {
+      crossings++;
+    }
+  }
+  return (crossings % 2 == 1) ? 0 : 1;
 }
 
 // Classify `point` against the solid. Returns 0=IN, 1=OUT, 2=ON, 3=UNKNOWN.
